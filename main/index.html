@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bambu Lab A1 智能排风控制器</title>
+  <style>
+    :root {
+      --bg-color: #0f1013;
+      --card-bg: #1a1c22;
+      --card-border: rgba(255, 255, 255, 0.06);
+      --text-main: #ffffff;
+      --text-sub: #90a4ae;
+      --primary: #00e676;
+      --primary-glow: rgba(0, 230, 118, 0.2);
+      --accent-orange: #ff9100;
+      --accent-red: #ff1744;
+      --accent-blue: #2979ff;
+      --accent-purple: #d500f9;
+      --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Header Section */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 4px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.5px;
+    }
+
+    .brand svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--primary);
+    }
+
+    .settings-btn {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .settings-btn:active {
+      transform: scale(0.95);
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Common Card Styles */
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Print Status Card */
+    .status-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-badge-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      background-color: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--primary);
+      animation: pulse 2s infinite;
+    }
+
+    .status-text {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--primary);
+    }
+
+    .signal-pill {
+      background-color: rgba(0, 230, 118, 0.1);
+      border: 1px solid rgba(0, 230, 118, 0.2);
+      color: var(--primary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+    }
+
+    .signal-pill svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+
+    .active-pill {
+      background-color: rgba(41, 121, 255, 0.15);
+      border: 1px solid rgba(41, 121, 255, 0.3);
+      color: #82b1ff;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .subtask-name {
+      font-size: 0.95rem;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 4px;
+    }
+
+    /* Progress Section */
+    .progress-card {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .progress-circle-container {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .progress-circle-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.03);
+      stroke-width: 10;
+    }
+
+    .progress-circle-bar {
+      fill: none;
+      stroke: url(#progressGradient);
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-dasharray: 283;
+      stroke-dashoffset: 283;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke-dashoffset 0.8s ease;
+    }
+
+    .progress-percentage {
+      position: absolute;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .progress-info {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+    }
+
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .info-label {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+    }
+
+    .info-val-large {
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+
+    .info-val-large span {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-sub);
+      margin-left: 4px;
+    }
+
+    .info-val-normal {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .info-val-normal span {
+      color: var(--text-sub);
+      font-weight: 500;
+    }
+
+    .eta-pill {
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary);
+      width: fit-content;
+      margin-top: 4px;
+    }
+
+    .eta-pill svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Grid Status Section */
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 8px;
+      margin-bottom: 2px;
+      padding-left: 4px;
+    }
+
+    .grid-status {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .status-tile {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tile-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-wrapper {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(255, 255, 255, 0.04);
+    }
+
+    .icon-wrapper svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .tile-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+
+    .tile-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .tile-value span {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      font-weight: 500;
+      margin-left: 2px;
+    }
+
+    .tile-progress {
+      width: 100%;
+      height: 4px;
+      background-color: rgba(255, 255, 255, 0.05);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .tile-progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    /* Specific Tile Colors */
+    .tile-nozzle .icon-wrapper { color: var(--accent-orange); background-color: rgba(255, 145, 0, 0.1); }
+    .tile-nozzle .tile-progress-fill { background-color: var(--accent-orange); }
+
+    .tile-bed .icon-wrapper { color: var(--accent-red); background-color: rgba(255, 23, 68, 0.1); }
+    .tile-bed .tile-progress-fill { background-color: var(--accent-red); }
+
+    .tile-cfan .icon-wrapper { color: var(--accent-blue); background-color: rgba(41, 121, 255, 0.1); }
+    .tile-cfan .tile-progress-fill { background-color: var(--accent-blue); }
+
+    .tile-efan .icon-wrapper { color: var(--accent-purple); background-color: rgba(213, 0, 249, 0.1); }
+    .tile-efan .tile-progress-fill { background-color: var(--accent-purple); }
+
+    /* AMS Lite Section */
+    .ams-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .ams-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ams-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-sub);
+      letter-spacing: 0.5px;
+    }
+
+    .ams-badge {
+      background-color: rgba(255, 145, 0, 0.1);
+      border: 1px solid rgba(255, 145, 0, 0.2);
+      color: var(--accent-orange);
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .ams-badge svg {
+      width: 10px;
+      height: 10px;
+      fill: currentColor;
+    }
+
+    .ams-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .ams-slot {
+      border-radius: 14px;
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid transparent;
+      position: relative;
+      transition: all 0.3s;
+      cursor: pointer;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .ams-slot-id {
+      font-size: 0.7rem;
+      font-weight: 700;
+      opacity: 0.8;
+      align-self: flex-start;
+      padding-left: 2px;
+    }
+
+    .ams-slot-icon {
+      width: 24px;
+      height: 24px;
+      opacity: 0.9;
+    }
+
+    .ams-slot-type {
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .ams-slot-remain {
+      font-size: 0.7rem;
+      font-weight: 600;
+      opacity: 0.8;
+      margin-top: 4px;
+    }
+
+    .ams-slot-progress {
+      width: 80%;
+      height: 3px;
+      background-color: rgba(255, 255, 255, 0.25);
+      border-radius: 1.5px;
+      overflow: hidden;
+    }
+
+    .ams-slot-progress-fill {
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.9);
+      width: 0%;
+      border-radius: 1.5px;
+    }
+
+    /* Active slot glow and animations */
+    .ams-slot.active {
+      box-shadow: 0 0 16px var(--slot-glow-color, rgba(255, 255, 255, 0.3));
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+
+    .ams-slot-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 6px;
+      height: 6px;
+      background-color: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--primary);
+    }
+
+    /* Control Panel Section */
+    .control-card {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .control-btn {
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 14px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .control-btn:active {
+      transform: scale(0.95);
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .control-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: var(--text-sub);
+      transition: all 0.2s;
+    }
+
+    .control-btn-text {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+
+    /* Highlight states for active control modes */
+    .control-btn.active-pause {
+      border-color: rgba(255, 145, 0, 0.3);
+      background-color: rgba(255, 145, 0, 0.08);
+    }
+    .control-btn.active-pause svg { fill: var(--accent-orange); }
+    .control-btn.active-pause .control-btn-text { color: var(--accent-orange); }
+
+    .control-btn.active-speed {
+      border-color: rgba(41, 121, 255, 0.3);
+      background-color: rgba(41, 121, 255, 0.08);
+    }
+    .control-btn.active-speed svg { fill: var(--accent-blue); }
+    .control-btn.active-speed .control-btn-text { color: var(--accent-blue); }
+
+    .control-btn.active-stop {
+      border-color: rgba(255, 23, 68, 0.3);
+      background-color: rgba(255, 23, 68, 0.08);
+    }
+    .control-btn.active-stop svg { fill: var(--accent-red); }
+    .control-btn.active-stop .control-btn-text { color: var(--accent-red); }
+
+    /* Footer Warning Panel */
+    .footer-warning {
+      background-color: rgba(255, 23, 68, 0.08);
+      border: 1px solid rgba(255, 23, 68, 0.15);
+      border-radius: 16px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #ff8a80;
+    }
+
+    .warning-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .warning-left svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    .warning-learn {
+      color: var(--text-main);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* Settings View Specifics */
+    .settings-view {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 4px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .back-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    .settings-title {
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+
+    .settings-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .settings-group-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-left: 4px;
+    }
+
+    .setting-item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .setting-item-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+    }
+
+    .setting-label {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .setting-value {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+    }
+
+    .setting-input {
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      outline: none;
+      width: 180px;
+      transition: all 0.2s;
+    }
+
+    .setting-input:focus {
+      border-color: var(--primary);
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .edit-action-btn {
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 52px;
+      text-align: center;
+    }
+
+    .edit-action-btn:active {
+      transform: scale(0.95);
+    }
+
+    .btn-danger {
+      color: var(--accent-red);
+      background-color: rgba(255, 23, 68, 0.05);
+      border-color: rgba(255, 23, 68, 0.15);
+    }
+
+    .save-config-btn {
+      background-color: var(--primary);
+      color: #000;
+      font-weight: 700;
+      border: none;
+      padding: 16px;
+      border-radius: 16px;
+      font-size: 1rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      margin-top: 16px;
+      box-shadow: 0 4px 16px var(--primary-glow);
+    }
+
+    .save-config-btn:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    .settings-note {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      text-align: center;
+      line-height: 1.4;
+      margin-top: 8px;
+    }
+
+    /* Common Utils */
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px var(--primary); }
+      50% { transform: scale(1.1); opacity: 0.8; box-shadow: 0 0 16px var(--primary); }
+      100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px var(--primary); }
+    }
+
+    /* CSS Loader for fetching feedback */
+    .loader {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--text-sub);
+      border-bottom-color: transparent;
+      border-radius: 50%;
+      display: inline-block;
+      animation: rotation 1s linear infinite;
+    }
+
+    @keyframes rotation {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- SVG Gradients -->
+    <svg style="width:0;height:0;position:absolute;" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00e676" />
+          <stop offset="100%" stop-color="#00b0ff" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <!-- DASHBOARD VIEW -->
+    <div id="dashboard-view" class="app-container">
+      
+      <!-- Top Header -->
+      <div class="header">
+        <div class="brand">
+          <svg viewBox="0 0 24 24">
+            <path d="M19,8H5V19H19V8M19,6A2,2 0 0,1 21,8V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V8A2,2 0 0,1 5,6H19M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/>
+          </svg>
+          BAMBU LAB A1
+        </div>
+        <button class="settings-btn" onclick="showSettings()">
+          <svg style="width:16px;height:16px;fill:currentColor;" viewBox="0 0 24 24">
+            <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.47,5.34 14.86,5.08L14.47,2.42C14.43,2.18 14.22,2 13.97,2H9.97C9.72,2 9.51,2.18 9.47,2.42L9.08,5.08C8.47,5.34 7.9,5.66 7.38,6.05L4.89,5.05C4.67,4.96 4.4,5.05 4.28,5.27L2.28,8.73C2.16,8.95 2.21,9.22 2.4,9.37L4.51,11C4.47,11.34 4.45,11.67 4.45,12C4.45,12.33 4.47,12.65 4.51,12.97L2.4,14.63C2.21,14.78 2.16,15.05 2.28,15.27L4.28,18.73C4.4,18.95 4.67,19.04 4.89,18.95L7.38,17.95C7.9,18.34 8.47,18.66 9.08,18.92L9.47,21.58C9.51,21.82 9.72,22 9.97,22H13.97C14.22,22 14.43,21.82 14.47,21.58L14.86,18.92C15.47,18.66 16.04,18.34 16.56,17.95L19.05,18.95C19.27,19.04 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+          </svg>
+          设置
+        </button>
+      </div>
+
+      <!-- State Card -->
+      <div class="card status-card">
+        <div class="status-header">
+          <div class="status-badge-container">
+            <div id="state-dot" class="status-dot"></div>
+            <span id="state-text" class="status-text">DISCONNECTED</span>
+          </div>
+          <div class="status-badge-container">
+            <span id="wifi-signal" class="signal-pill">
+              <svg viewBox="0 0 24 24"><path d="M12,3C7.79,3 3.7,4.41 0.38,7C4.41,12.06 7.89,16.37 12,21.5C16.08,16.37 19.56,12.06 23.62,7C20.3,4.41 16.21,3 12,3Z"/></svg>
+              <span>--</span>
+            </span>
+            <span id="active-badge" class="active-badge active-pill">Active</span>
+          </div>
+        </div>
+        <div id="subtask-name" class="subtask-name">未连接到打印机状态数据...</div>
+      </div>
+
+      <!-- Circular Progress Card -->
+      <div class="card progress-card">
+        <div class="progress-circle-container">
+          <svg width="120" height="120">
+            <circle class="progress-circle-bg" cx="60" cy="60" r="45"></circle>
+            <circle id="progress-bar" class="progress-circle-bar" cx="60" cy="60" r="45"></circle>
+          </svg>
+          <div id="progress-percent" class="progress-percentage">0%</div>
+        </div>
+        <div class="progress-info">
+          <div class="info-item">
+            <span class="info-label">剩余时间</span>
+            <span id="remaining-time" class="info-val-large">--<span>min</span></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">当前层数</span>
+            <span id="layer-info" class="info-val-normal">-- <span>/ --</span></span>
+          </div>
+          <div id="eta-pill" class="eta-pill hidden">
+            <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg>
+            <span id="eta-time">预计 --:-- 完成</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid Status (Nozzle, Bed, Fans) -->
+      <div class="section-title">硬件状态</div>
+      <div class="grid-status">
+        <!-- Nozzle -->
+        <div class="card status-tile tile-nozzle">
+          <div class="tile-header">
+            <div class="icon-wrapper">
+              <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg>
+            </div>
+            <span class="tile-title">Nozzle</span>
+          </div>
+          <div id="nozzle-temp" class="tile-value">--<span>°C / --°C</span></div>
+          <div class="tile-progress">
+            <div id="nozzle-progress" class="tile-progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+        <!-- Bed -->
+        <div class="card status-tile tile-bed">
+          <div class="tile-header">
+            <div class="icon-wrapper">
+              <svg viewBox="0 0 24 24"><path d="M19 19H5V5H19V19M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M17 11H7V9H17V11M17 15H7V13H17V15Z"/></svg>
+            </div>
+            <span class="tile-title">Heatbed</span>
+          </div>
+          <div id="bed-temp" class="tile-value">--<span>°C / --°C</span></div>
+          <div class="tile-progress">
+            <div id="bed-progress" class="tile-progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+        <!-- Cooling Fan -->
+        <div class="card status-tile tile-cfan">
+          <div class="tile-header">
+            <div class="icon-wrapper">
+              <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,13.6 19.5,15.1 18.7,16.4L16.4,14.1C16.8,13.5 17,12.8 17,12C17,9.2 14.8,7 12,7V4M4,12A8,8 0 0,1 12,4V7C9.2,7 7,9.2 7,12C7,12.8 7.2,13.5 7.6,14.1L5.3,16.4C4.5,15.1 4,13.6 4,12M12,20A8,8 0 0,1 5.3,7.6L7.6,9.9C7.2,10.5 7,11.2 7,12C7,14.8 9.2,17 12,17V20M20,12A8,8 0 0,1 12,20V17C14.8,17 17,14.8 17,12C17,11.2 16.8,10.5 16.4,9.9L18.7,7.6C19.5,9.1 20,10.6 20,12Z"/></svg>
+            </div>
+            <span class="tile-title">Cooling Fan</span>
+          </div>
+          <div id="cfan-speed" class="tile-value">--</div>
+          <div class="tile-progress">
+            <div id="cfan-progress" class="tile-progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+        <!-- Exhaust Fan -->
+        <div class="card status-tile tile-efan">
+          <div class="tile-header">
+            <div class="icon-wrapper">
+              <svg viewBox="0 0 24 24"><path d="M12,2C11.4,2 10.9,2.4 10.8,3L10,7.9C9.1,8.3 8.3,8.9 7.6,9.6L3.4,7C2.9,6.7 2.3,6.8 1.9,7.3C1.6,7.8 1.7,8.4 2.2,8.7L6.4,11.3C6.4,11.8 6.4,12.2 6.4,12.7L2.2,15.3C1.7,15.6 1.6,16.2 1.9,16.7C2.3,17.2 2.9,17.3 3.4,17L7.6,14.4C8.3,15.1 9.1,15.7 10,16.1L10.8,21C10.9,21.6 11.4,22 12,22C12.6,22 13.1,21.6 13.2,21L14,16.1C14.9,15.7 15.7,15.1 16.4,14.4L20.6,17C21.1,17.3 21.7,17.2 22.1,16.7C22.4,16.2 22.3,15.6 21.8,15.3L17.6,12.7C17.6,12.2 17.6,11.8 17.6,11.3L21.8,8.7C22.3,8.4 22.4,7.8 22.1,7.3C21.7,6.8 21.1,6.7 20.6,7L16.4,9.6C15.7,8.9 14.9,8.3 14,7.9L13.2,3C13.1,2.4 12.6,2 12,2M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10Z"/></svg>
+            </div>
+            <span class="tile-title">Exhaust Fan</span>
+          </div>
+          <div id="efan-speed" class="tile-value">--</div>
+          <div class="tile-progress">
+            <div id="efan-progress" class="tile-progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AMS LITE Spool Section -->
+      <div class="card ams-card">
+        <div class="ams-header">
+          <span class="ams-title">AMS LITE 耗材系统</span>
+          <span id="ams-feeding-badge" class="ams-badge hidden">
+            <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg>
+            进料中
+          </span>
+        </div>
+        <div class="ams-grid">
+          <!-- Spool 1 -->
+          <div id="ams-slot-0" class="ams-slot">
+            <span class="ams-slot-id">1</span>
+            <svg class="ams-slot-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/></svg>
+            <span class="ams-slot-type">--</span>
+            <div class="ams-slot-progress">
+              <div id="ams-slot-progress-0" class="ams-slot-progress-fill"></div>
+            </div>
+            <span class="ams-slot-remain">--</span>
+          </div>
+          <!-- Spool 2 -->
+          <div id="ams-slot-1" class="ams-slot">
+            <span class="ams-slot-id">2</span>
+            <svg class="ams-slot-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/></svg>
+            <span class="ams-slot-type">--</span>
+            <div class="ams-slot-progress">
+              <div id="ams-slot-progress-1" class="ams-slot-progress-fill"></div>
+            </div>
+            <span class="ams-slot-remain">--</span>
+          </div>
+          <!-- Spool 3 -->
+          <div id="ams-slot-2" class="ams-slot">
+            <span class="ams-slot-id">3</span>
+            <svg class="ams-slot-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/></svg>
+            <span class="ams-slot-type">--</span>
+            <div class="ams-slot-progress">
+              <div id="ams-slot-progress-2" class="ams-slot-progress-fill"></div>
+            </div>
+            <span class="ams-slot-remain">--</span>
+          </div>
+          <!-- Spool 4 -->
+          <div id="ams-slot-3" class="ams-slot">
+            <span class="ams-slot-id">4</span>
+            <svg class="ams-slot-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/></svg>
+            <span class="ams-slot-type">--</span>
+            <div class="ams-slot-progress">
+              <div id="ams-slot-progress-3" class="ams-slot-progress-fill"></div>
+            </div>
+            <span class="ams-slot-remain">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Panel -->
+      <div class="section-title">打印控制</div>
+      <div class="card control-card">
+        <button id="ctrl-pause" class="control-btn" onclick="sendControl('pause')">
+          <svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>
+          <span class="control-btn-text" id="pause-btn-text">暂停</span>
+        </button>
+        <button id="ctrl-speed" class="control-btn" onclick="cycleSpeed()">
+          <svg viewBox="0 0 24 24"><path d="M12,16A3,3 0 0,0 15,13A3,3 0 0,0 12,10A3,3 0 0,0 9,13A3,3 0 0,0 12,16M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,13.6 19.5,15.1 18.7,16.4L16.4,14.1C16.8,13.5 17,12.8 17,12C17,9.2 14.8,7 12,7V4M4,12A8,8 0 0,1 12,4V7C9.2,7 7,9.2 7,12C7,12.8 7.2,13.5 7.6,14.1L5.3,16.4C4.5,15.1 4,13.6 4,12M12,20A8,8 0 0,1 5.3,7.6L7.6,9.9C7.2,10.5 7,11.2 7,12C7,14.8 9.2,17 12,17V20M20,12A8,8 0 0,1 12,20V17C14.8,17 17,14.8 17,12C17,11.2 16.8,10.5 16.4,9.9L18.7,7.6C19.5,9.1 20,10.6 20,12Z"/></svg>
+          <span class="control-btn-text" id="speed-btn-text">速度 100%</span>
+        </button>
+        <button id="ctrl-stop" class="control-btn" onclick="sendControl('stop')">
+          <svg viewBox="0 0 24 24"><path d="M18,18H6V6H18V18Z"/></svg>
+          <span class="control-btn-text">停止</span>
+        </button>
+      </div>
+
+      <!-- Network Warning -->
+      <div id="network-warning" class="footer-warning hidden">
+        <div class="warning-left">
+          <svg viewBox="0 0 24 24"><path d="M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>
+          <span id="warning-text">Possible network issues detected</span>
+        </div>
+        <span class="warning-learn">Learn more</span>
+      </div>
+
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div id="settings-view" class="settings-view">
+      <div class="settings-header">
+        <button class="back-btn" onclick="hideSettings()">
+          <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+          监控
+        </button>
+        <span class="settings-title">设备设置</span>
+      </div>
+
+      <!-- WiFi Configuration -->
+      <div class="settings-section">
+        <div class="settings-group-title">Wi-Fi 网络</div>
+        <div class="card" style="padding: 12px 20px;">
+          <!-- WiFi Status Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label" id="wifi-status-name">Wi-Fi</span>
+              <span class="setting-value" id="wifi-status-desc">未连接</span>
+            </div>
+            <button id="wifi-disconnect-btn" class="edit-action-btn btn-danger hidden" onclick="disconnectWifi()">断开</button>
+          </div>
+          <!-- SSID Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">网络名称</span>
+              <span class="setting-value" id="wifi-ssid-val">--</span>
+              <input type="text" id="wifi-ssid-input" class="setting-input hidden" placeholder="请输入 SSID">
+            </div>
+            <button id="wifi-ssid-edit" class="edit-action-btn" onclick="toggleEdit('wifi-ssid')">编辑</button>
+          </div>
+          <!-- Password Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">密码</span>
+              <span class="setting-value" id="wifi-pass-val">••••••••</span>
+              <input type="password" id="wifi-pass-input" class="setting-input hidden" placeholder="请输入密码">
+            </div>
+            <button id="wifi-pass-edit" class="edit-action-btn" onclick="toggleEdit('wifi-pass')">编辑</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Printer Configuration -->
+      <div class="settings-section">
+        <div class="settings-group-title">打印机</div>
+        <div class="card" style="padding: 12px 20px;">
+          <!-- Printer Status Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">Bambu Lab A1</span>
+              <span class="setting-value" id="printer-status-desc">离线</span>
+            </div>
+            <button class="edit-action-btn" id="ping-printer-btn" onclick="pingPrinter()">检测</button>
+          </div>
+          <!-- IP Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">局域网 IP</span>
+              <span class="setting-value" id="printer-ip-val">--</span>
+              <input type="text" id="printer-ip-input" class="setting-input hidden" placeholder="e.g. 192.168.1.54">
+            </div>
+            <button id="printer-ip-edit" class="edit-action-btn" onclick="toggleEdit('printer-ip')">编辑</button>
+          </div>
+          <!-- Access Code Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">访问码</span>
+              <span class="setting-value" id="printer-pass-val">••••••••</span>
+              <input type="password" id="printer-pass-input" class="setting-input hidden" placeholder="Access Code">
+            </div>
+            <button id="printer-pass-edit" class="edit-action-btn" onclick="toggleEdit('printer-pass')">编辑</button>
+          </div>
+          <!-- Serial Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">序列号</span>
+              <span class="setting-value" id="printer-sn-val">--</span>
+              <input type="text" id="printer-sn-input" class="setting-input hidden" placeholder="e.g. 03919D...">
+            </div>
+            <button id="printer-sn-edit" class="edit-action-btn" onclick="toggleEdit('printer-sn')">编辑</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save Button -->
+      <button class="save-config-btn" onclick="saveConfiguration()">保存配置并重启</button>
+      <div class="settings-note">访问码和序列号用于局域网直连打印，请勿分享给他人。</div>
+    </div>
+
+  </div>
+
+  <script>
+    // State values
+    let currentSpeedLvl = 2; // Default Standard
+    const speedLabels = {
+      1: "速度 50% (静音)",
+      2: "速度 100% (标准)",
+      3: "速度 124% (运动)",
+      4: "速度 166% (狂暴)"
+    };
+    
+    let isEditing = {};
+    let configData = {
+      wifi_ssid: "",
+      wifi_pass: "",
+      bambu_ip: "",
+      bambu_pass: "",
+      bambu_serial: ""
+    };
+
+    function showSettings() {
+      document.getElementById('dashboard-view').style.display = 'none';
+      document.getElementById('settings-view').style.display = 'flex';
+      // Load current configs into text
+      fetchConfig();
+    }
+
+    function hideSettings() {
+      document.getElementById('settings-view').style.display = 'none';
+      document.getElementById('dashboard-view').style.display = 'flex';
+    }
+
+    function toggleEdit(field) {
+      const valEl = document.getElementById(field + '-val');
+      const inputEl = document.getElementById(field + '-input');
+      const btnEl = document.getElementById(field + '-edit');
+
+      if (!isEditing[field]) {
+        // Switch to Input
+        valEl.classList.add('hidden');
+        inputEl.classList.remove('hidden');
+        inputEl.value = field.includes('pass') ? "" : (valEl.innerText === '--' ? '' : valEl.innerText);
+        inputEl.focus();
+        btnEl.innerText = '确定';
+        isEditing[field] = true;
+      } else {
+        // Switch back to Text
+        valEl.classList.remove('hidden');
+        inputEl.classList.add('hidden');
+        if (inputEl.value !== "") {
+          if (field.includes('pass')) {
+            valEl.innerText = '••••••••';
+            configData[field.replace('-', '_')] = inputEl.value;
+          } else {
+            valEl.innerText = inputEl.value;
+            configData[field.replace('-', '_')] = inputEl.value;
+          }
+        }
+        btnEl.innerText = '编辑';
+        isEditing[field] = false;
+      }
+    }
+
+    // Hex RGBA to standard hex
+    function formatColor(rgbaHex) {
+      if (!rgbaHex || rgbaHex.length < 6) return '#ffffff';
+      return '#' + rgbaHex.substring(0, 6);
+    }
+
+    // Determine readable text color based on background color brightness
+    function getContrastColor(hexColor) {
+      hexColor = hexColor.replace('#', '');
+      const r = parseInt(hexColor.substr(0, 2), 16);
+      const g = parseInt(hexColor.substr(2, 2), 16);
+      const b = parseInt(hexColor.substr(4, 2), 16);
+      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+      return (yiq >= 128) ? '#000000' : '#ffffff';
+    }
+
+    // Fetch printer status and update DOM
+    async function updateStatus() {
+      try {
+        const response = await fetch('/api/status');
+        if (!response.ok) throw new Error('API request failed');
+        const data = await response.json();
+
+        // Update Network status footer
+        const netWarning = document.getElementById('network-warning');
+        if (data.printer_online) {
+          netWarning.classList.add('hidden');
+        } else {
+          netWarning.classList.remove('hidden');
+          document.getElementById('warning-text').innerText = '未检测到局域网打印机连接';
+        }
+
+        // State & badges
+        const stateDot = document.getElementById('state-dot');
+        const stateText = document.getElementById('state-text');
+        
+        stateText.innerText = data.gcode_state || 'OFFLINE';
+        if (data.gcode_state === 'RUNNING') {
+          stateText.style.color = 'var(--primary)';
+          stateDot.style.backgroundColor = 'var(--primary)';
+          stateDot.style.boxShadow = '0 0 10px var(--primary)';
+        } else if (data.gcode_state === 'PAUSE') {
+          stateText.style.color = 'var(--accent-orange)';
+          stateDot.style.backgroundColor = 'var(--accent-orange)';
+          stateDot.style.boxShadow = '0 0 10px var(--accent-orange)';
+        } else {
+          stateText.style.color = 'var(--text-sub)';
+          stateDot.style.backgroundColor = 'var(--text-sub)';
+          stateDot.style.boxShadow = 'none';
+        }
+
+        // Subtask name
+        document.getElementById('subtask-name').innerText = data.subtask_name || '空闲中';
+
+        // WiFi signal
+        const wifiSig = document.getElementById('wifi-signal');
+        if (data.wifi_signal) {
+          wifiSig.classList.remove('hidden');
+          wifiSig.querySelector('span').innerText = data.wifi_signal;
+        } else {
+          wifiSig.classList.add('hidden');
+        }
+
+        // Progress Circle & percentages
+        const pct = data.mc_percent || 0;
+        document.getElementById('progress-percent').innerText = pct + '%';
+        const circleBar = document.getElementById('progress-bar');
+        const circumference = 2 * Math.PI * 45; // 282.74
+        const offset = circumference - (pct / 100) * circumference;
+        circleBar.style.strokeDashoffset = offset;
+
+        // Info panels
+        document.getElementById('remaining-time').innerHTML = (data.mc_remaining_time !== undefined ? data.mc_remaining_time : '--') + '<span>min</span>';
+        document.getElementById('layer-info').innerHTML = (data.layer_num || 0) + ` <span>/ ${data.total_layer_num || 0}</span>`;
+
+        // Calculate ETA
+        const etaPill = document.getElementById('eta-pill');
+        if (data.gcode_state === 'RUNNING' && data.mc_remaining_time > 0) {
+          etaPill.classList.remove('hidden');
+          const now = new Date();
+          const eta = new Date(now.getTime() + data.mc_remaining_time * 60 * 1000);
+          const hh = String(eta.getHours()).padStart(2, '0');
+          const mm = String(eta.getMinutes()).padStart(2, '0');
+          document.getElementById('eta-time').innerText = `预计 ${hh}:${mm} 完成`;
+        } else {
+          etaPill.classList.add('hidden');
+        }
+
+        // Nozzle & Bed Progress
+        // Range 0 - 300
+        const nzPct = Math.min((data.nozzle_temper || 0) / 300 * 100, 100);
+        document.getElementById('nozzle-temp').innerHTML = Math.round(data.nozzle_temper || 0) + `<span>°C / ${Math.round(data.nozzle_target_temper || 0)}°C</span>`;
+        document.getElementById('nozzle-progress').style.width = nzPct + '%';
+
+        // Range 0 - 100
+        const bedPct = Math.min((data.bed_temper || 0) / 100 * 100, 100);
+        document.getElementById('bed-temp').innerHTML = Math.round(data.bed_temper || 0) + `<span>°C / ${Math.round(data.bed_target_temper || 0)}°C</span>`;
+        document.getElementById('bed-progress').style.width = bedPct + '%';
+
+        // Cooling Fan speed
+        const cfanVal = data.cooling_fan_speed || '0';
+        document.getElementById('cfan-speed').innerHTML = cfanVal + (cfanVal.includes('%') ? '' : '%');
+        const cfanPct = parseInt(cfanVal) || 0;
+        document.getElementById('cfan-progress').style.width = Math.min(cfanPct, 100) + '%';
+
+        // Exhaust Fan PWM speed
+        const efanDuty = data.esp_fan_duty || 0;
+        const efanPct = Math.round(efanDuty / 255 * 100);
+        document.getElementById('efan-speed').innerHTML = efanPct + '%';
+        document.getElementById('efan-progress').style.width = efanPct + '%';
+
+        // Control Panel Pause highlight
+        const pauseBtn = document.getElementById('ctrl-pause');
+        const pauseTxt = document.getElementById('pause-btn-text');
+        if (data.gcode_state === 'PAUSE') {
+          pauseBtn.classList.add('active-pause');
+          pauseTxt.innerText = '继续';
+        } else {
+          pauseBtn.classList.remove('active-pause');
+          pauseTxt.innerText = '暂停';
+        }
+
+        // Control Panel Speed display
+        currentSpeedLvl = data.spd_lvl || 2;
+        document.getElementById('speed-btn-text').innerText = speedLabels[currentSpeedLvl] || '速度 100%';
+        const speedBtn = document.getElementById('ctrl-speed');
+        if (currentSpeedLvl !== 2) {
+          speedBtn.classList.add('active-speed');
+        } else {
+          speedBtn.classList.remove('active-speed');
+        }
+
+        // AMS Lite render
+        const amsFeedingBadge = document.getElementById('ams-feeding-badge');
+        let isFeeding = false;
+
+        for (let i = 0; i < 4; i++) {
+          const slotEl = document.getElementById(`ams-slot-${i}`);
+          const typeEl = slotEl.querySelector('.ams-slot-type');
+          const remainEl = slotEl.querySelector('.ams-slot-remain');
+          const fillEl = document.getElementById(`ams-slot-progress-${i}`);
+
+          const tray = data.ams_trays && data.ams_trays[i];
+          if (tray && tray.type && tray.type !== 'Empty') {
+            typeEl.innerText = tray.type;
+            
+            // Format colors
+            const fColor = formatColor(tray.color);
+            slotEl.style.backgroundColor = fColor;
+            slotEl.style.setProperty('--slot-glow-color', fColor + '55');
+            slotEl.style.color = getContrastColor(fColor);
+
+            // Display Spool remaining percentage
+            // Since Bambu payload remain might be -1, if -1, we show '--' or custom mock
+            const remVal = tray.remain >= 0 ? tray.remain : -1;
+            if (remVal >= 0) {
+              remainEl.innerText = remVal + '%';
+              fillEl.style.width = remVal + '%';
+            } else {
+              remainEl.innerText = '--';
+              fillEl.style.width = '100%'; // Full bar
+            }
+
+            // Check if active feeding slot
+            if (data.tray_now === i) {
+              slotEl.classList.add('active');
+              // Ensure we have a dot
+              if (!slotEl.querySelector('.ams-slot-dot')) {
+                const dot = document.createElement('div');
+                dot.className = 'ams-slot-dot';
+                slotEl.appendChild(dot);
+              }
+              isFeeding = true;
+            } else {
+              slotEl.classList.remove('active');
+              const dot = slotEl.querySelector('.ams-slot-dot');
+              if (dot) dot.remove();
+            }
+          } else {
+            // Empty slot
+            typeEl.innerText = '空';
+            remainEl.innerText = '--';
+            fillEl.style.width = '0%';
+            slotEl.style.backgroundColor = 'rgba(255,255,255,0.02)';
+            slotEl.style.color = 'var(--text-sub)';
+            slotEl.classList.remove('active');
+            const dot = slotEl.querySelector('.ams-slot-dot');
+            if (dot) dot.remove();
+          }
+        }
+
+        // Show/hide feeding banner
+        if (isFeeding) {
+          amsFeedingBadge.classList.remove('hidden');
+        } else {
+          amsFeedingBadge.classList.add('hidden');
+        }
+
+        // ESP32 WiFi and Printer status in settings page
+        document.getElementById('wifi-status-name').innerText = data.esp_wifi_connected ? 'Wi-Fi网络 已连接' : 'Wi-Fi网络 未连接';
+        if (data.esp_wifi_connected) {
+          document.getElementById('wifi-disconnect-btn').classList.remove('hidden');
+        } else {
+          document.getElementById('wifi-disconnect-btn').classList.add('hidden');
+        }
+        document.getElementById('printer-status-desc').innerText = data.printer_online ? '在线' : '离线';
+        document.getElementById('printer-status-desc').style.color = data.printer_online ? 'var(--primary)' : 'var(--text-sub)';
+
+      } catch (err) {
+        console.error('Failed to update dashboard status:', err);
+        document.getElementById('network-warning').classList.remove('hidden');
+        document.getElementById('warning-text').innerText = '与 ESP32-C3 控制器失去连接';
+      }
+    }
+
+    // Call REST controls
+    async function sendControl(cmd, param = '') {
+      try {
+        const body = { cmd: cmd };
+        if (param) body.param = param;
+
+        const response = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (response.ok) {
+          // Instantly refresh dashboard
+          setTimeout(updateStatus, 300);
+        } else {
+          alert('发送控制指令失败');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function cycleSpeed() {
+      // Speeds: 1 (Silent), 2 (Standard), 3 (Sport), 4 (Ludicrous)
+      let nextSpeed = currentSpeedLvl + 1;
+      if (nextSpeed > 4) nextSpeed = 1;
+      sendControl('speed', String(nextSpeed));
+    }
+
+    // Config portal functions
+    async function fetchConfig() {
+      try {
+        const response = await fetch('/api/status'); // api/status also reports config keys placeholder or values
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        configData.wifi_ssid = data.config_wifi_ssid || "";
+        configData.bambu_ip = data.config_bambu_ip || "";
+        configData.bambu_serial = data.config_bambu_serial || "";
+
+        document.getElementById('wifi-ssid-val').innerText = configData.wifi_ssid || "未配置";
+        document.getElementById('wifi-pass-val').innerText = data.config_wifi_pass_set ? "••••••••" : "未配置";
+        document.getElementById('printer-ip-val').innerText = configData.bambu_ip || "未配置";
+        document.getElementById('printer-pass-val').innerText = data.config_bambu_pass_set ? "••••••••" : "未配置";
+        document.getElementById('printer-sn-val').innerText = configData.bambu_serial || "未配置";
+        document.getElementById('wifi-status-desc').innerText = data.esp_wifi_connected ? `已连接 (${data.config_wifi_ssid})` : '未连接';
+
+      } catch (e) {
+        console.error('Failed to fetch config:', e);
+      }
+    }
+
+    async function saveConfiguration() {
+      // If currently editing, apply changes first
+      for (const field of ['wifi-ssid', 'wifi-pass', 'printer-ip', 'printer-pass', 'printer-sn']) {
+        if (isEditing[field]) {
+          toggleEdit(field);
+        }
+      }
+
+      // Prepare body
+      const payload = {
+        wifi_ssid: configData.wifi_ssid,
+        wifi_pass: configData.wifi_pass,
+        bambu_ip: configData.bambu_ip,
+        bambu_pass: configData.bambu_pass,
+        bambu_serial: configData.bambu_serial
+      };
+
+      try {
+        const btn = document.querySelector('.save-config-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loader"></span> 正在保存重启...';
+
+        const response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          alert('配置已成功保存！控制器将在2秒内重启，请重新连接 Wi-Fi。');
+        } else {
+          alert('保存配置失败，请检查数据。');
+          btn.disabled = false;
+          btn.innerText = '保存配置并重启';
+        }
+      } catch (e) {
+        alert('网络请求发生错误，无法保存。');
+        console.error(e);
+      }
+    }
+
+    async function disconnectWifi() {
+      if (confirm('确定要断开 Wi-Fi 连接并恢复到配网热点模式吗？')) {
+        try {
+          const response = await fetch('/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cmd: 'disconnect_wifi' })
+          });
+          if (response.ok) {
+            alert('Wi-Fi 已断开，控制器将重启并进入配网热点模式。');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+
+    async function pingPrinter() {
+      const pingBtn = document.getElementById('ping-printer-btn');
+      pingBtn.disabled = true;
+      pingBtn.innerText = '检测中...';
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        if (data.printer_online) {
+          alert('测试成功！打印机在线并可以正常通信。');
+        } else {
+          alert('检测失败！打印机未在线，请检查打印机局域网 IP 与访问码配置。');
+        }
+      } catch (e) {
+        alert('无法与控制板建立通信进行测试。');
+      } finally {
+        pingBtn.disabled = false;
+        pingBtn.innerText = '检测';
+      }
+    }
+
+    // Auto Refresh Loops
+    updateStatus();
+    setInterval(updateStatus, 1000); // 1s refresh loop
+  </script>
+</body>
+</html>
