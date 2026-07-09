@@ -51,6 +51,7 @@ static TimerHandle_t s_fan_timer = NULL;
 static const char *TAG = "BambuFanCtrl";
 static esp_mqtt_client_handle_t s_mqtt_client = NULL;
 static int s_wifi_retry_num = 0;
+static uint32_t s_current_fan_duty = 0; // 记录当前风扇占空比
 
 // Function Prototypes
 static void init_ledc_pwm(void);
@@ -91,6 +92,7 @@ static void set_fan_duty(uint32_t duty)
     if (duty > 255) {
         duty = 255;
     }
+    s_current_fan_duty = duty;
     ESP_LOGI(TAG, "Changing Fan PWM duty cycle to: %lu/255 (%.1f%%)", duty, (duty * 100.0) / 255.0);
     ESP_ERROR_CHECK(ledc_set_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL));
@@ -104,6 +106,9 @@ static void fan_timer_callback(TimerHandle_t xTimer)
 
 static void parse_printer_status(const char *json_str)
 {
+    static char s_last_gcode_state[32] = "UNKNOWN";
+    static char s_last_tray_type[32] = "UNKNOWN";
+
     cJSON *root = cJSON_Parse(json_str);
     if (root == NULL) {
         ESP_LOGE(TAG, "Failed to parse printer JSON status message.");
@@ -120,6 +125,8 @@ static void parse_printer_status(const char *json_str)
     cJSON *gcode_state_item = cJSON_GetObjectItem(print_obj, "gcode_state");
     if (gcode_state_item && cJSON_IsString(gcode_state_item)) {
         const char *gcode_state = gcode_state_item->valuestring;
+        strncpy(s_last_gcode_state, gcode_state, sizeof(s_last_gcode_state) - 1);
+        s_last_gcode_state[sizeof(s_last_gcode_state) - 1] = '\0';
         ESP_LOGI(TAG, "G-code State: %s", gcode_state);
 
         if (strcmp(gcode_state, "RUNNING") == 0) {
@@ -206,6 +213,9 @@ static void parse_printer_status(const char *json_str)
             // Update fan duty based on tray type
             if (tray_type != NULL) {
                 ESP_LOGI(TAG, "Active tray material: %s", tray_type);
+                strncpy(s_last_tray_type, tray_type, sizeof(s_last_tray_type) - 1);
+                s_last_tray_type[sizeof(s_last_tray_type) - 1] = '\0';
+
                 if (strcmp(tray_type, "PLA") == 0) {
                     set_fan_duty(255); // 100% full speed
                 } else if (strcmp(tray_type, "PETG") == 0) {
@@ -221,6 +231,7 @@ static void parse_printer_status(const char *json_str)
             }
 
         } else if (strcmp(gcode_state, "FINISH") == 0 || strcmp(gcode_state, "IDLE") == 0) {
+            strncpy(s_last_tray_type, "NONE", sizeof(s_last_tray_type) - 1);
             if (s_fan_timer != NULL) {
                 if (xTimerIsTimerActive(s_fan_timer) == pdFALSE) {
                     ESP_LOGI(TAG, "G-code state is %s. Starting 5-minute (300s) fan shutdown timer.", gcode_state);
@@ -233,6 +244,10 @@ static void parse_printer_status(const char *json_str)
             ESP_LOGI(TAG, "State is %s. No action taken.", gcode_state);
         }
     }
+
+    // 打印状态汇总日志 (包含打印机当前状态、耗材类型、以及风扇 PWM 状态)
+    ESP_LOGI(TAG, "Status Summary -> G-code: %s, Material: %s | Fan PWM: %lu/255 (%.1f%%)",
+             s_last_gcode_state, s_last_tray_type, s_current_fan_duty, (s_current_fan_duty * 100.0) / 255.0);
 
     cJSON_Delete(root);
 }
@@ -306,9 +321,18 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     int msg_id;
     switch ((esp_mqtt_event_id_t)event_id) {
         case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            msg_id = esp_mqtt_client_subscribe(client, BAMBU_MQTT_TOPIC, 0);
-            ESP_LOGI(TAG, "Subscribed to %s, msg_id=%d", BAMBU_MQTT_TOPIC, msg_id);
+            {
+                ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+                msg_id = esp_mqtt_client_subscribe(client, BAMBU_MQTT_TOPIC, 0);
+                ESP_LOGI(TAG, "Subscribed to %s, msg_id=%d", BAMBU_MQTT_TOPIC, msg_id);
+
+                // 发送状态查询指令 (pushall) 促使打印机主动推送包含 gcode_state 等完整信息的数据包
+                char request_topic[100];
+                snprintf(request_topic, sizeof(request_topic), "device/%s/request", BAMBU_PRINTER_SERIAL);
+                const char *request_payload = "{\"pushing\":{\"sequence_id\":\"0\",\"command\":\"pushall\"}}";
+                msg_id = esp_mqtt_client_publish(client, request_topic, request_payload, 0, 1, 0);
+                ESP_LOGI(TAG, "Sent status request (pushall) to %s, msg_id=%d", request_topic, msg_id);
+            }
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -323,12 +347,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
             break;
         case MQTT_EVENT_DATA:
-            ESP_LOGD(TAG, "MQTT_EVENT_DATA received");
+            ESP_LOGI(TAG, "MQTT_EVENT_DATA received: data_len=%d, total_len=%d", event->data_len, event->total_data_len);
             if (event->data_len > 0) {
                 char *json_str = malloc(event->data_len + 1);
                 if (json_str) {
                     memcpy(json_str, event->data, event->data_len);
                     json_str[event->data_len] = '\0';
+                    ESP_LOGI(TAG, "Payload: %s", json_str);
                     parse_printer_status(json_str);
                     free(json_str);
                 }
@@ -366,6 +391,9 @@ static void mqtt_app_start(void)
             .authentication = {
                 .password = BAMBU_ACCESS_CODE,
             },
+        },
+        .buffer = {
+            .size = 24576, // 24KB buffer to hold the large Bambu Lab JSON payload
         },
     };
 
