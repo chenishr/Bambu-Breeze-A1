@@ -725,6 +725,29 @@
       margin-top: 8px;
     }
 
+    .efan-ctrl-btn {
+      flex: 1;
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-sub);
+      font-size: 0.65rem;
+      padding: 4px 0;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    
+    .efan-ctrl-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .efan-ctrl-btn.active {
+      background-color: rgba(213, 0, 249, 0.15);
+      border-color: rgba(213, 0, 249, 0.4);
+      color: #e040fb;
+    }
+
     /* Common Utils */
     .hidden {
       display: none !important;
@@ -872,15 +895,26 @@
         </div>
         <!-- Exhaust Fan -->
         <div class="card status-tile tile-efan">
-          <div class="tile-header">
-            <div class="icon-wrapper">
-              <svg viewBox="0 0 24 24"><path d="M12,2C11.4,2 10.9,2.4 10.8,3L10,7.9C9.1,8.3 8.3,8.9 7.6,9.6L3.4,7C2.9,6.7 2.3,6.8 1.9,7.3C1.6,7.8 1.7,8.4 2.2,8.7L6.4,11.3C6.4,11.8 6.4,12.2 6.4,12.7L2.2,15.3C1.7,15.6 1.6,16.2 1.9,16.7C2.3,17.2 2.9,17.3 3.4,17L7.6,14.4C8.3,15.1 9.1,15.7 10,16.1L10.8,21C10.9,21.6 11.4,22 12,22C12.6,22 13.1,21.6 13.2,21L14,16.1C14.9,15.7 15.7,15.1 16.4,14.4L20.6,17C21.1,17.3 21.7,17.2 22.1,16.7C22.4,16.2 22.3,15.6 21.8,15.3L17.6,12.7C17.6,12.2 17.6,11.8 17.6,11.3L21.8,8.7C22.3,8.4 22.4,7.8 22.1,7.3C21.7,6.8 21.1,6.7 20.6,7L16.4,9.6C15.7,8.9 14.9,8.3 14,7.9L13.2,3C13.1,2.4 12.6,2 12,2M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10Z"/></svg>
+          <div class="tile-header" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="icon-wrapper">
+                <svg viewBox="0 0 24 24"><path d="M12,2C11.4,2 10.9,2.4 10.8,3L10,7.9C9.1,8.3 8.3,8.9 7.6,9.6L3.4,7C2.9,6.7 2.3,6.8 1.9,7.3C1.6,7.8 1.7,8.4 2.2,8.7L6.4,11.3C6.4,11.8 6.4,12.2 6.4,12.7L2.2,15.3C1.7,15.6 1.6,16.2 1.9,16.7C2.3,17.2 2.9,17.3 3.4,17L7.6,14.4C8.3,15.1 9.1,15.7 10,16.1L10.8,21C10.9,21.6 11.4,22 12,22C12.6,22 13.1,21.6 13.2,21L14,16.1C14.9,15.7 15.7,15.1 16.4,14.4L20.6,17C21.1,17.3 21.7,17.2 22.1,16.7C22.4,16.2 22.3,15.6 21.8,15.3L17.6,12.7C17.6,12.2 17.6,11.8 17.6,11.3L21.8,8.7C22.3,8.4 22.4,7.8 22.1,7.3C21.7,6.8 21.1,6.7 20.6,7L16.4,9.6C15.7,8.9 14.9,8.3 14,7.9L13.2,3C13.1,2.4 12.6,2 12,2M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10Z"/></svg>
+              </div>
+              <span class="tile-title">Exhaust Fan</span>
             </div>
-            <span class="tile-title">Exhaust Fan</span>
+            <span id="efan-mode-badge" style="font-size: 0.65rem; padding: 2px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--text-sub); font-weight: 700;">自动</span>
           </div>
           <div id="efan-speed" class="tile-value">--</div>
-          <div class="tile-progress">
+          <div class="tile-progress" style="margin-bottom: 8px;">
             <div id="efan-progress" class="tile-progress-fill" style="width: 0%;"></div>
+          </div>
+          <!-- Inline Manual Override Controls -->
+          <div class="efan-controls" style="display: flex; gap: 4px; width: 100%;">
+            <button class="efan-ctrl-btn" id="efan-c-auto" onclick="sendEfanControl('auto')">Auto</button>
+            <button class="efan-ctrl-btn" id="efan-c-0" onclick="sendEfanControl('manual', 0)">关</button>
+            <button class="efan-ctrl-btn" id="efan-c-85" onclick="sendEfanControl('manual', 85)">33%</button>
+            <button class="efan-ctrl-btn" id="efan-c-128" onclick="sendEfanControl('manual', 128)">50%</button>
+            <button class="efan-ctrl-btn" id="efan-c-255" onclick="sendEfanControl('manual', 255)">100%</button>
           </div>
         </div>
       </div>
@@ -1231,6 +1265,38 @@
         document.getElementById('efan-speed').innerHTML = efanPct + '%';
         document.getElementById('efan-progress').style.width = efanPct + '%';
 
+        // Update Exhaust Fan Mode Badge and active controls
+        const modeBadge = document.getElementById('efan-mode-badge');
+        const autoBtn = document.getElementById('efan-c-auto');
+        const btn0 = document.getElementById('efan-c-0');
+        const btn85 = document.getElementById('efan-c-85');
+        const btn128 = document.getElementById('efan-c-128');
+        const btn255 = document.getElementById('efan-c-255');
+
+        // Remove active class from all buttons first
+        autoBtn.classList.remove('active');
+        btn0.classList.remove('active');
+        btn85.classList.remove('active');
+        btn128.classList.remove('active');
+        btn255.classList.remove('active');
+
+        if (data.esp_fan_manual) {
+          modeBadge.innerText = '手动';
+          modeBadge.style.color = 'var(--accent-purple)';
+          modeBadge.style.backgroundColor = 'rgba(213, 0, 249, 0.1)';
+
+          // Select matching manual duty button
+          if (efanDuty === 0) btn0.classList.add('active');
+          else if (efanDuty === 85) btn85.classList.add('active');
+          else if (efanDuty === 128) btn128.classList.add('active');
+          else if (efanDuty === 255) btn255.classList.add('active');
+        } else {
+          modeBadge.innerText = '自动';
+          modeBadge.style.color = 'var(--text-sub)';
+          modeBadge.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+          autoBtn.classList.add('active');
+        }
+
         // Control Panel Pause highlight
         const pauseBtn = document.getElementById('ctrl-pause');
         const pauseTxt = document.getElementById('pause-btn-text');
@@ -1351,6 +1417,27 @@
           setTimeout(updateStatus, 300);
         } else {
           alert('发送控制指令失败');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function sendEfanControl(mode, duty = 0) {
+      try {
+        const body = { cmd: 'fan_mode', mode: mode };
+        if (mode === 'manual') body.duty = duty;
+
+        const response = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (response.ok) {
+          // Instantly refresh dashboard
+          setTimeout(updateStatus, 150);
+        } else {
+          alert('配置排风扇失败');
         }
       } catch (e) {
         console.error(e);

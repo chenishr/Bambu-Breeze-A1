@@ -43,6 +43,7 @@ static TimerHandle_t s_fan_timer = NULL;
 static const char *TAG = "BambuFanCtrl";
 static esp_mqtt_client_handle_t s_mqtt_client = NULL;
 static uint32_t s_current_fan_duty = 0; // Current fan duty cycle (0-255)
+static bool s_manual_fan_control = false; // Ignore A1 automatic fan speed adjustments if true
 
 // Application configuration struct stored in NVS
 typedef struct {
@@ -104,6 +105,7 @@ static void parse_printer_status(const char *json_str);
 static void fan_timer_callback(TimerHandle_t xTimer);
 static void init_printer_status(void);
 static httpd_handle_t start_webserver(void);
+static void update_fan_from_current_status(void);
 
 // NVS Helper Functions
 static esp_err_t load_app_config(app_config_t *cfg)
@@ -364,44 +366,55 @@ static void parse_printer_status(const char *json_str)
             }
         }
 
-        // Resolve active material for PWM speed control
-        const char *active_material = NULL;
-        if (tray_now_val == 255 || tray_now_val == 254 || tray_now_val == -1) {
-            if (s_printer_status.vt_tray.type[0] != '\0' && strcmp(s_printer_status.vt_tray.type, "Empty") != 0) {
-                active_material = s_printer_status.vt_tray.type;
-            }
-        } else if (tray_now_val >= 0 && tray_now_val < 4) {
-            if (s_printer_status.ams_trays[tray_now_val].type[0] != '\0' && strcmp(s_printer_status.ams_trays[tray_now_val].type, "Empty") != 0) {
-                active_material = s_printer_status.ams_trays[tray_now_val].type;
-            }
-        }
 
-        // Update fan duty if printer is actively RUNNING
-        if (strcmp(s_printer_status.gcode_state, "RUNNING") == 0) {
-            if (s_fan_timer != NULL && xTimerIsTimerActive(s_fan_timer) == pdTRUE) {
-                xTimerStop(s_fan_timer, 0);
-            }
-            if (active_material != NULL) {
-                if (strcmp(active_material, "PLA") == 0) {
-                    set_fan_duty(255); // 100% full speed
-                } else if (strcmp(active_material, "PETG") == 0) {
-                    set_fan_duty(85);  // ~33% low speed
-                } else if (strcmp(active_material, "ABS") == 0 || strcmp(active_material, "ASA") == 0) {
-                    set_fan_duty(0);   // Off
-                } else {
-                    set_fan_duty(128); // 50% default
-                }
-            }
-        } else if (strcmp(s_printer_status.gcode_state, "FINISH") == 0 || strcmp(s_printer_status.gcode_state, "IDLE") == 0) {
-            if (s_fan_timer != NULL && xTimerIsTimerActive(s_fan_timer) == pdFALSE) {
-                xTimerStart(s_fan_timer, 0);
-            }
-        }
+
+        // Update fan duty from parsed status (respects manual override inside the function)
+        update_fan_from_current_status();
 
         xSemaphoreGive(s_status_mutex);
     }
     
     cJSON_Delete(root);
+}
+
+static void update_fan_from_current_status(void)
+{
+    if (s_manual_fan_control) {
+        return;
+    }
+
+    const char *active_material = NULL;
+    int tray_now_val = s_printer_status.tray_now;
+    if (tray_now_val == 255 || tray_now_val == 254 || tray_now_val == -1) {
+        if (s_printer_status.vt_tray.type[0] != '\0' && strcmp(s_printer_status.vt_tray.type, "Empty") != 0) {
+            active_material = s_printer_status.vt_tray.type;
+        }
+    } else if (tray_now_val >= 0 && tray_now_val < 4) {
+        if (s_printer_status.ams_trays[tray_now_val].type[0] != '\0' && strcmp(s_printer_status.ams_trays[tray_now_val].type, "Empty") != 0) {
+            active_material = s_printer_status.ams_trays[tray_now_val].type;
+        }
+    }
+
+    if (strcmp(s_printer_status.gcode_state, "RUNNING") == 0) {
+        if (s_fan_timer != NULL && xTimerIsTimerActive(s_fan_timer) == pdTRUE) {
+            xTimerStop(s_fan_timer, 0);
+        }
+        if (active_material != NULL) {
+            if (strcmp(active_material, "PLA") == 0) {
+                set_fan_duty(255);
+            } else if (strcmp(active_material, "PETG") == 0) {
+                set_fan_duty(85);
+            } else if (strcmp(active_material, "ABS") == 0 || strcmp(active_material, "ASA") == 0) {
+                set_fan_duty(0);
+            } else {
+                set_fan_duty(128);
+            }
+        }
+    } else if (strcmp(s_printer_status.gcode_state, "FINISH") == 0 || strcmp(s_printer_status.gcode_state, "IDLE") == 0) {
+        if (s_fan_timer != NULL && xTimerIsTimerActive(s_fan_timer) == pdFALSE) {
+            xTimerStart(s_fan_timer, 0);
+        }
+    }
 }
 
 // Wi-Fi Configuration Portal & Event Handlers
@@ -637,6 +650,7 @@ static esp_err_t get_status_handler(httpd_req_t *req)
 
     // ESP32 system metrics
     cJSON_AddNumberToObject(root, "esp_fan_duty", s_printer_status.esp_fan_duty);
+    cJSON_AddBoolToObject(root, "esp_fan_manual", s_manual_fan_control);
     cJSON_AddBoolToObject(root, "printer_online", s_printer_status.printer_online);
 
     // Wi-Fi Connection
@@ -768,6 +782,30 @@ static esp_err_t post_control_handler(httpd_req_t *req)
     if (cmd_item && cJSON_IsString(cmd_item)) {
         const char *cmd = cmd_item->valuestring;
         ESP_LOGI(TAG, "Post control trigger: %s", cmd);
+
+        if (strcmp(cmd, "fan_mode") == 0) {
+            cJSON *mode_item = cJSON_GetObjectItem(root, "mode");
+            if (mode_item && cJSON_IsString(mode_item)) {
+                const char *mode = mode_item->valuestring;
+                if (strcmp(mode, "auto") == 0) {
+                    s_manual_fan_control = false;
+                    if (xSemaphoreTake(s_status_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        update_fan_from_current_status();
+                        xSemaphoreGive(s_status_mutex);
+                    }
+                } else if (strcmp(mode, "manual") == 0) {
+                    cJSON *duty_item = cJSON_GetObjectItem(root, "duty");
+                    if (duty_item && cJSON_IsNumber(duty_item)) {
+                        s_manual_fan_control = true;
+                        set_fan_duty(duty_item->valueint);
+                    }
+                }
+            }
+            cJSON_Delete(root);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+            return ESP_OK;
+        }
 
         if (strcmp(cmd, "disconnect_wifi") == 0) {
             memset(s_config.wifi_ssid, 0, sizeof(s_config.wifi_ssid));
