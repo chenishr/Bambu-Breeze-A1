@@ -28,6 +28,10 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    html {
+      background-color: var(--bg-color);
+    }
+
     body {
       background-color: var(--bg-color);
       color: var(--text-main);
@@ -580,20 +584,27 @@
       display: none;
       flex-direction: column;
       gap: 16px;
+      width: 100%;
+      max-width: 480px;
     }
 
     .settings-header {
+      position: relative;
       display: flex;
+      justify-content: center;
       align-items: center;
-      gap: 12px;
-      padding: 8px 4px;
+      width: 100%;
+      padding: 12px 4px;
+      margin-bottom: 8px;
     }
 
     .back-btn {
+      position: absolute;
+      left: 4px;
       background: none;
       border: none;
       color: var(--primary);
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
       display: flex;
@@ -608,8 +619,9 @@
     }
 
     .settings-title {
-      font-size: 1.8rem;
-      font-weight: 800;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text-main);
     }
 
     .settings-section {
@@ -794,11 +806,14 @@
       
       <!-- Top Header -->
       <div class="header">
-        <div class="brand">
-          <svg viewBox="0 0 24 24">
-            <path d="M19,8H5V19H19V8M19,6A2,2 0 0,1 21,8V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V8A2,2 0 0,1 5,6H19M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/>
-          </svg>
-          BAMBU LAB A1
+        <div class="brand" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg viewBox="0 0 24 24">
+              <path d="M19,8H5V19H19V8M19,6A2,2 0 0,1 21,8V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V8A2,2 0 0,1 5,6H19M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/>
+            </svg>
+            BAMBU LAB A1
+          </div>
+          <span id="board-ip-text" style="font-size: 0.72rem; color: var(--text-sub); margin-left: 32px; font-weight: 500;">IP: --</span>
         </div>
         <button class="settings-btn" onclick="showSettings()">
           <svg style="width:16px;height:16px;fill:currentColor;" viewBox="0 0 24 24">
@@ -972,22 +987,9 @@
         </div>
       </div>
 
-      <!-- Controls Panel -->
-      <div class="section-title">打印控制</div>
-      <div class="card control-card">
-        <button id="ctrl-pause" class="control-btn" onclick="sendControl('pause')">
-          <svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>
-          <span class="control-btn-text" id="pause-btn-text">暂停</span>
-        </button>
-        <button id="ctrl-speed" class="control-btn" onclick="cycleSpeed()">
-          <svg viewBox="0 0 24 24"><path d="M12,16A3,3 0 0,0 15,13A3,3 0 0,0 12,10A3,3 0 0,0 9,13A3,3 0 0,0 12,16M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12C20,13.6 19.5,15.1 18.7,16.4L16.4,14.1C16.8,13.5 17,12.8 17,12C17,9.2 14.8,7 12,7V4M4,12A8,8 0 0,1 12,4V7C9.2,7 7,9.2 7,12C7,12.8 7.2,13.5 7.6,14.1L5.3,16.4C4.5,15.1 4,13.6 4,12M12,20A8,8 0 0,1 5.3,7.6L7.6,9.9C7.2,10.5 7,11.2 7,12C7,14.8 9.2,17 12,17V20M20,12A8,8 0 0,1 12,20V17C14.8,17 17,14.8 17,12C17,11.2 16.8,10.5 16.4,9.9L18.7,7.6C19.5,9.1 20,10.6 20,12Z"/></svg>
-          <span class="control-btn-text" id="speed-btn-text">速度 100%</span>
-        </button>
-        <button id="ctrl-stop" class="control-btn" onclick="sendControl('stop')">
-          <svg viewBox="0 0 24 24"><path d="M18,18H6V6H18V18Z"/></svg>
-          <span class="control-btn-text">停止</span>
-        </button>
       </div>
+
+      <!-- Network Warning -->
 
       <!-- Network Warning -->
       <div id="network-warning" class="footer-warning hidden">
@@ -998,10 +1000,8 @@
         <span class="warning-learn">Learn more</span>
       </div>
 
-    </div>
-
     <!-- SETTINGS VIEW -->
-    <div id="settings-view" class="settings-view">
+    <div id="settings-view" class="app-container" style="display: none;">
       <div class="settings-header">
         <button class="back-btn" onclick="hideSettings()">
           <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
@@ -1021,6 +1021,13 @@
               <span class="setting-value" id="wifi-status-desc">未连接</span>
             </div>
             <button id="wifi-disconnect-btn" class="edit-action-btn btn-danger hidden" onclick="disconnectWifi()">断开</button>
+          </div>
+          <!-- WiFi IP Row -->
+          <div class="setting-item-row" id="wifi-ip-row">
+            <div class="setting-info">
+              <span class="setting-label">IP 地址</span>
+              <span class="setting-value" id="wifi-ip-desc">--</span>
+            </div>
           </div>
           <!-- SSID Row -->
           <div class="setting-item-row">
@@ -1141,12 +1148,17 @@
         valEl.classList.remove('hidden');
         inputEl.classList.add('hidden');
         if (inputEl.value !== "") {
+          let key = field.replace('-', '_');
+          if (key === 'printer_ip') key = 'bambu_ip';
+          else if (key === 'printer_pass') key = 'bambu_pass';
+          else if (key === 'printer_sn') key = 'bambu_serial';
+
           if (field.includes('pass')) {
             valEl.innerText = '••••••••';
-            configData[field.replace('-', '_')] = inputEl.value;
+            configData[key] = inputEl.value;
           } else {
             valEl.innerText = inputEl.value;
-            configData[field.replace('-', '_')] = inputEl.value;
+            configData[key] = inputEl.value;
           }
         }
         btnEl.innerText = '编辑';
@@ -1189,6 +1201,10 @@
         // State & badges
         const stateDot = document.getElementById('state-dot');
         const stateText = document.getElementById('state-text');
+        
+        // Update Board IP address in Header
+        const ipStr = data.esp_ip || '0.0.0.0';
+        document.getElementById('board-ip-text').innerText = (ipStr && ipStr !== '0.0.0.0') ? `IP: ${ipStr}` : 'IP: 未连接';
         
         stateText.innerText = data.gcode_state || 'OFFLINE';
         if (data.gcode_state === 'RUNNING') {
@@ -1295,27 +1311,6 @@
           modeBadge.style.color = 'var(--text-sub)';
           modeBadge.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
           autoBtn.classList.add('active');
-        }
-
-        // Control Panel Pause highlight
-        const pauseBtn = document.getElementById('ctrl-pause');
-        const pauseTxt = document.getElementById('pause-btn-text');
-        if (data.gcode_state === 'PAUSE') {
-          pauseBtn.classList.add('active-pause');
-          pauseTxt.innerText = '继续';
-        } else {
-          pauseBtn.classList.remove('active-pause');
-          pauseTxt.innerText = '暂停';
-        }
-
-        // Control Panel Speed display
-        currentSpeedLvl = data.spd_lvl || 2;
-        document.getElementById('speed-btn-text').innerText = speedLabels[currentSpeedLvl] || '速度 100%';
-        const speedBtn = document.getElementById('ctrl-speed');
-        if (currentSpeedLvl !== 2) {
-          speedBtn.classList.add('active-speed');
-        } else {
-          speedBtn.classList.remove('active-speed');
         }
 
         // AMS Lite render
@@ -1468,6 +1463,9 @@
         document.getElementById('printer-pass-val').innerText = data.config_bambu_pass_set ? "••••••••" : "未配置";
         document.getElementById('printer-sn-val').innerText = configData.bambu_serial || "未配置";
         document.getElementById('wifi-status-desc').innerText = data.esp_wifi_connected ? `已连接 (${data.config_wifi_ssid})` : '未连接';
+        
+        const configIpStr = data.esp_ip || '0.0.0.0';
+        document.getElementById('wifi-ip-desc').innerText = (configIpStr && configIpStr !== '0.0.0.0') ? configIpStr : '未连接/未分配';
 
       } catch (e) {
         console.error('Failed to fetch config:', e);

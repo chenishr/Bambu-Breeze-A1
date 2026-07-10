@@ -91,6 +91,7 @@ typedef struct {
 static printer_status_t s_printer_status;
 static SemaphoreHandle_t s_status_mutex = NULL;
 static esp_timer_handle_t s_wifi_reconnect_timer = NULL;
+static char s_esp_ip_addr[32] = "0.0.0.0";
 
 // Binary data references to embedded index.html
 extern const char index_html_start[] asm("_binary_index_html_start");
@@ -185,19 +186,33 @@ static void init_ledc_pwm(void)
     ESP_LOGI(TAG, "LEDC PWM initialized on GPIO %d (Freq: %d Hz).", FAN_PWM_GPIO, FAN_LEDC_FREQ);
 }
 
-static void set_fan_duty(uint32_t duty)
+static void set_fan_duty_unlocked(uint32_t duty)
 {
     if (duty > 255) {
         duty = 255;
     }
     s_current_fan_duty = duty;
-    if (s_status_mutex != NULL && xSemaphoreTake(s_status_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        s_printer_status.esp_fan_duty = duty;
-        xSemaphoreGive(s_status_mutex);
-    }
+    s_printer_status.esp_fan_duty = duty;
     ESP_LOGI(TAG, "Changing Fan PWM duty cycle to: %lu/255 (%.1f%%)", duty, (duty * 100.0) / 255.0);
     ESP_ERROR_CHECK(ledc_set_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL));
+}
+
+static void set_fan_duty(uint32_t duty)
+{
+    if (s_status_mutex != NULL && xSemaphoreTake(s_status_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        set_fan_duty_unlocked(duty);
+        xSemaphoreGive(s_status_mutex);
+    } else {
+        // Fallback: update hardware anyway even if mutex acquisition fails
+        if (duty > 255) {
+            duty = 255;
+        }
+        s_current_fan_duty = duty;
+        ESP_LOGW(TAG, "Mutex timeout in set_fan_duty. Updating hardware only.");
+        ESP_ERROR_CHECK(ledc_set_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL, duty));
+        ESP_ERROR_CHECK(ledc_update_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL));
+    }
 }
 
 static void fan_timer_callback(TimerHandle_t xTimer)
@@ -401,13 +416,13 @@ static void update_fan_from_current_status(void)
         }
         if (active_material != NULL) {
             if (strcmp(active_material, "PLA") == 0) {
-                set_fan_duty(255);
+                set_fan_duty_unlocked(255);
             } else if (strcmp(active_material, "PETG") == 0) {
-                set_fan_duty(85);
+                set_fan_duty_unlocked(85);
             } else if (strcmp(active_material, "ABS") == 0 || strcmp(active_material, "ASA") == 0) {
-                set_fan_duty(0);
+                set_fan_duty_unlocked(0);
             } else {
-                set_fan_duty(128);
+                set_fan_duty_unlocked(128);
             }
         }
     } else if (strcmp(s_printer_status.gcode_state, "FINISH") == 0 || strcmp(s_printer_status.gcode_state, "IDLE") == 0) {
@@ -432,6 +447,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGI(TAG, "Wi-Fi STA Disconnected.");
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        strcpy(s_esp_ip_addr, "0.0.0.0");
         
         if (s_status_mutex != NULL && xSemaphoreTake(s_status_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             s_printer_status.printer_online = false;
@@ -451,7 +467,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "Wi-Fi STA Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(s_esp_ip_addr, sizeof(s_esp_ip_addr), IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Wi-Fi STA Got IP: %s", s_esp_ip_addr);
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         // Start MQTT client now that network is available
         mqtt_app_start();
@@ -656,6 +673,7 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     // Wi-Fi Connection
     bool wifi_connected = (xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT) != 0;
     cJSON_AddBoolToObject(root, "esp_wifi_connected", wifi_connected);
+    cJSON_AddStringToObject(root, "esp_ip", s_esp_ip_addr);
 
     // Config references
     cJSON_AddStringToObject(root, "config_wifi_ssid", s_config.wifi_ssid);
@@ -683,7 +701,7 @@ static void reboot_timer_callback(void* arg)
 
 static esp_err_t post_config_handler(httpd_req_t *req)
 {
-    char buf[256];
+    char buf[512];
     int ret, remaining = req->content_len;
 
     if (remaining >= sizeof(buf)) {
