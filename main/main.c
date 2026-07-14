@@ -21,6 +21,8 @@
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_timer.h"
+#include "led_strip.h"
+#include "esp_random.h"
 
 #define NVS_NAMESPACE "config"
 
@@ -52,6 +54,10 @@ typedef struct {
     char bambu_ip[32];
     char bambu_pass[32];
     char bambu_serial[32];
+    uint8_t led_on;
+    uint8_t led_mode;
+    uint8_t led_gpio;
+    uint16_t led_count;
 } app_config_t;
 
 static app_config_t s_config;
@@ -92,6 +98,7 @@ static printer_status_t s_printer_status;
 static SemaphoreHandle_t s_status_mutex = NULL;
 static esp_timer_handle_t s_wifi_reconnect_timer = NULL;
 static char s_esp_ip_addr[32] = "0.0.0.0";
+static int s_wifi_retry_count = 0;
 
 // Binary data references to embedded index.html
 extern const char index_html_start[] asm("_binary_index_html_start");
@@ -130,6 +137,21 @@ static esp_err_t load_app_config(app_config_t *cfg)
         required_size = sizeof(cfg->bambu_serial);
         nvs_get_str(my_handle, "bambu_serial", cfg->bambu_serial, &required_size);
     }
+    
+    // Read LED settings (with defaults if missing)
+    if (nvs_get_u8(my_handle, "led_on", &cfg->led_on) != ESP_OK) {
+        cfg->led_on = 1; // default on
+    }
+    if (nvs_get_u8(my_handle, "led_mode", &cfg->led_mode) != ESP_OK) {
+        cfg->led_mode = 4; // default to Rainbow
+    }
+    if (nvs_get_u8(my_handle, "led_gpio", &cfg->led_gpio) != ESP_OK) {
+        cfg->led_gpio = 8; // default GPIO 8
+    }
+    if (nvs_get_u16(my_handle, "led_count", &cfg->led_count) != ESP_OK) {
+        cfg->led_count = 1; // default 1 LED
+    }
+
     nvs_close(my_handle);
     return err;
 }
@@ -155,6 +177,10 @@ static esp_err_t save_app_config(const app_config_t *cfg)
         err = nvs_set_str(my_handle, "bambu_serial", cfg->bambu_serial);
     }
     if (err == ESP_OK) {
+        nvs_set_u8(my_handle, "led_on", cfg->led_on);
+        nvs_set_u8(my_handle, "led_mode", cfg->led_mode);
+        nvs_set_u8(my_handle, "led_gpio", cfg->led_gpio);
+        nvs_set_u16(my_handle, "led_count", cfg->led_count);
         err = nvs_commit(my_handle);
     }
     nvs_close(my_handle);
@@ -212,6 +238,212 @@ static void set_fan_duty(uint32_t duty)
         ESP_LOGW(TAG, "Mutex timeout in set_fan_duty. Updating hardware only.");
         ESP_ERROR_CHECK(ledc_set_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL, duty));
         ESP_ERROR_CHECK(ledc_update_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL));
+    }
+}
+
+// WS2812 RGB LED controller
+static led_strip_handle_t s_led_strip = NULL;
+static uint8_t s_led_on = 1;
+static uint8_t s_led_mode = 4; // 0=Off, 1=Red, 2=Green, 3=Blue, 4=Rainbow, 5=Breathing
+
+static void init_ws2812(void)
+{
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = s_config.led_gpio,
+        .max_leds = s_config.led_count,
+        .led_model = LED_MODEL_WS2812,
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
+        .flags.invert_out = false,
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 10 * 1000 * 1000, // 10MHz
+        .flags.with_dma = false,
+    };
+    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_led_strip);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "WS2812 LED strip initialized on GPIO %d, count: %d", s_config.led_gpio, s_config.led_count);
+        led_strip_clear(s_led_strip);
+    } else {
+        ESP_LOGE(TAG, "Failed to initialize WS2812 LED strip: %d (%s)", err, esp_err_to_name(err));
+    }
+}
+
+static void hsv_to_rgb(uint32_t h, uint32_t s, uint32_t v, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+    h %= 360;
+    uint32_t rgb_max = v * 2.55f;
+    uint32_t rgb_min = rgb_max * (100 - s) / 100.0f;
+    uint32_t i = h / 60;
+    uint32_t diff = h % 60;
+    uint32_t rgb_adj = (rgb_max - rgb_min) * diff / 60;
+
+    switch (i) {
+    case 0:
+        *r = rgb_max; *g = rgb_min + rgb_adj; *b = rgb_min;
+        break;
+    case 1:
+        *r = rgb_max - rgb_adj; *g = rgb_max; *b = rgb_min;
+        break;
+    case 2:
+        *r = rgb_min; *g = rgb_max; *b = rgb_min + rgb_adj;
+        break;
+    case 3:
+        *r = rgb_min; *g = rgb_max - rgb_adj; *b = rgb_max;
+        break;
+    case 4:
+        *r = rgb_min + rgb_adj; *g = rgb_min; *b = rgb_max;
+        break;
+    default:
+        *r = rgb_max; *g = rgb_min; *b = rgb_max - rgb_adj;
+        break;
+    }
+}
+
+static void ws2812_task(void *pvParameters)
+{
+    uint32_t hue = 0;
+    int16_t brightness = 0;
+    int8_t fade_dir = 1;
+
+    while (1) {
+        if (s_led_strip == NULL) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        if (!s_led_on || s_led_mode == 0) {
+            led_strip_clear(s_led_strip);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        uint8_t r = 0, g = 0, b = 0;
+
+        switch (s_led_mode) {
+        case 1: // Solid Red
+            r = 255; g = 0; b = 0;
+            break;
+        case 2: // Solid Green
+            r = 0; g = 255; b = 0;
+            break;
+        case 3: // Solid Blue
+            r = 0; g = 0; b = 255;
+            break;
+        case 4: // Natural White
+            r = 255; g = 255; b = 255;
+            break;
+        case 5: // Cool White
+            r = 200; g = 225; b = 255;
+            break;
+        case 6: // Warm White
+            r = 255; g = 190; b = 100;
+            break;
+        case 7: // Cozy Orange
+            r = 255; g = 100; b = 15;
+            break;
+        case 8: // Rainbow Flow
+            for (int i = 0; i < s_config.led_count; i++) {
+                uint32_t pixel_hue = (hue + (i * 360 / s_config.led_count)) % 360;
+                hsv_to_rgb(pixel_hue, 100, 100, &r, &g, &b);
+                led_strip_set_pixel(s_led_strip, i, r, g, b);
+            }
+            hue = (hue + 2) % 360;
+            led_strip_refresh(s_led_strip);
+            vTaskDelay(pdMS_TO_TICKS(30));
+            continue;
+        case 9: // Breathing (Cyan/Ice Blue)
+            r = 0 * brightness / 255;
+            g = 180 * brightness / 255;
+            b = 255 * brightness / 255;
+            brightness += fade_dir * 5;
+            if (brightness >= 255) {
+                brightness = 255;
+                fade_dir = -1;
+            } else if (brightness <= 10) {
+                brightness = 10;
+                fade_dir = 1;
+            }
+            break;
+        case 10: { // Aurora (Cyan & Purple slow blending)
+            static int16_t wave = 0;
+            static int8_t dir = 1;
+            wave += dir * 2;
+            if (wave >= 255) { wave = 255; dir = -1; }
+            else if (wave <= 0) { wave = 0; dir = 1; }
+            r = (180 * wave) / 255;
+            g = (255 * (255 - wave)) / 255;
+            b = 255;
+            break;
+        }
+        case 11: { // Shooting Star / Chase
+            static int16_t lead_idx = 0;
+            static uint32_t frame_count = 0;
+            frame_count++;
+            if (frame_count % 3 == 0) {
+                lead_idx = (lead_idx + 1) % s_config.led_count;
+            }
+            for (int i = 0; i < s_config.led_count; i++) {
+                int dist = (lead_idx - i + s_config.led_count) % s_config.led_count;
+                if (dist == 0) {
+                    led_strip_set_pixel(s_led_strip, i, 255, 255, 255); // White comet head
+                } else if (dist <= 4) {
+                    uint8_t dim = 255 / (dist + 1);
+                    led_strip_set_pixel(s_led_strip, i, 0, dim / 2, dim); // Blue tail
+                } else {
+                    led_strip_set_pixel(s_led_strip, i, 0, 0, 0);
+                }
+            }
+            led_strip_refresh(s_led_strip);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+        case 12: { // Warning Flash (Red double flash)
+            static uint32_t cycle = 0;
+            cycle = (cycle + 1) % 20;
+            if (cycle == 0 || cycle == 2 || cycle == 5 || cycle == 7) {
+                r = 255; g = 0; b = 0;
+            } else {
+                r = 0; g = 0; b = 0;
+            }
+            break;
+        }
+        case 13: { // Forest Oasis (Green & Yellow slow blending)
+            static int16_t wave = 0;
+            static int8_t dir = 1;
+            wave += dir * 2;
+            if (wave >= 255) { wave = 255; dir = -1; }
+            else if (wave <= 0) { wave = 0; dir = 1; }
+            r = (255 * wave) / 255;
+            g = 255 - (75 * wave) / 255;
+            b = 0;
+            break;
+        }
+        case 14: { // Flame Flickering
+            uint8_t flicker = esp_random() % 60;
+            r = 255 - flicker;
+            g = 80 - (flicker / 2);
+            b = 10;
+            break;
+        }
+        default:
+            break;
+        }
+
+        for (int i = 0; i < s_config.led_count; i++) {
+            led_strip_set_pixel(s_led_strip, i, r, g, b);
+        }
+        led_strip_refresh(s_led_strip);
+
+        if (s_led_mode == 9 || s_led_mode == 10 || s_led_mode == 13) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        } else if (s_led_mode == 14) {
+            vTaskDelay(pdMS_TO_TICKS(60));
+        } else if (s_led_mode == 12) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
     }
 }
 
@@ -454,6 +686,24 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             xSemaphoreGive(s_status_mutex);
         }
 
+        // Increment retry count
+        s_wifi_retry_count++;
+        if (s_wifi_retry_count > 10) {
+            ESP_LOGW(TAG, "Wi-Fi connection failed repeatedly. Starting AP configuration portal...");
+            wifi_config_t ap_config = {
+                .ap = {
+                    .ssid = "Bambu-Breeze-AP",
+                    .ssid_len = strlen("Bambu-Breeze-AP"),
+                    .channel = 1,
+                    .authmode = WIFI_AUTH_OPEN,
+                    .max_connection = 4,
+                },
+            };
+            esp_wifi_set_mode(WIFI_MODE_APSTA);
+            esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+            s_wifi_retry_count = 0; // reset
+        }
+
         // Retry connection in 5 seconds without blocking the event queue
         if (s_config.wifi_ssid[0] != '\0') {
             if (s_wifi_reconnect_timer == NULL) {
@@ -470,6 +720,22 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         snprintf(s_esp_ip_addr, sizeof(s_esp_ip_addr), IPSTR, IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "Wi-Fi STA Got IP: %s", s_esp_ip_addr);
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        
+        s_wifi_retry_count = 0;
+        wifi_mode_t current_mode;
+        if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
+            ESP_LOGI(TAG, "Current Wi-Fi mode: %d", current_mode);
+            if (current_mode != WIFI_MODE_STA) {
+                ESP_LOGI(TAG, "Wi-Fi connected successfully. Disabling SoftAP to save power and reduce heat.");
+                esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to set Wi-Fi mode to STA: %d (%s)", err, esp_err_to_name(err));
+                } else {
+                    ESP_LOGI(TAG, "Successfully switched Wi-Fi mode to STA.");
+                }
+            }
+        }
+
         // Start MQTT client now that network is available
         mqtt_app_start();
     }
@@ -486,6 +752,7 @@ static void wifi_init(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
@@ -515,10 +782,9 @@ static void wifi_init(void)
         strncpy((char*)sta_config.sta.ssid, s_config.wifi_ssid, sizeof(sta_config.sta.ssid));
         strncpy((char*)sta_config.sta.password, s_config.wifi_pass, sizeof(sta_config.sta.password));
         
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
-        ESP_LOGI(TAG, "Starting Wi-Fi in AP+STA mode. SSID: %s", s_config.wifi_ssid);
+        ESP_LOGI(TAG, "Starting Wi-Fi in STA mode. SSID: %s", s_config.wifi_ssid);
     } else {
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
@@ -526,6 +792,7 @@ static void wifi_init(void)
     }
 
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
 }
 
 // MQTT client operations
@@ -681,6 +948,10 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "config_bambu_serial", s_config.bambu_serial);
     cJSON_AddBoolToObject(root, "config_wifi_pass_set", s_config.wifi_pass[0] != '\0');
     cJSON_AddBoolToObject(root, "config_bambu_pass_set", s_config.bambu_pass[0] != '\0');
+    cJSON_AddBoolToObject(root, "led_on", s_led_on);
+    cJSON_AddNumberToObject(root, "led_mode", s_led_mode);
+    cJSON_AddNumberToObject(root, "config_led_gpio", s_config.led_gpio);
+    cJSON_AddNumberToObject(root, "config_led_count", s_config.led_count);
 
     xSemaphoreGive(s_status_mutex);
 
@@ -755,6 +1026,16 @@ static esp_err_t post_config_handler(httpd_req_t *req)
     item = cJSON_GetObjectItem(root, "bambu_serial");
     if (item && cJSON_IsString(item) && strlen(item->valuestring) > 0) {
         strncpy(temp_config.bambu_serial, item->valuestring, sizeof(temp_config.bambu_serial) - 1);
+    }
+
+    item = cJSON_GetObjectItem(root, "led_gpio");
+    if (item && cJSON_IsNumber(item)) {
+        temp_config.led_gpio = item->valueint;
+    }
+
+    item = cJSON_GetObjectItem(root, "led_count");
+    if (item && cJSON_IsNumber(item)) {
+        temp_config.led_count = item->valueint;
     }
 
     cJSON_Delete(root);
@@ -836,6 +1117,24 @@ static esp_err_t post_control_handler(httpd_req_t *req)
             vTaskDelay(pdMS_TO_TICKS(500));
             esp_restart();
             cJSON_Delete(root);
+            return ESP_OK;
+        }
+
+        if (strcmp(cmd, "led") == 0) {
+            cJSON *on_item = cJSON_GetObjectItem(root, "on");
+            if (on_item && cJSON_IsBool(on_item)) {
+                s_led_on = cJSON_IsTrue(on_item) ? 1 : 0;
+                s_config.led_on = s_led_on;
+            }
+            cJSON *mode_item = cJSON_GetObjectItem(root, "mode");
+            if (mode_item && cJSON_IsNumber(mode_item)) {
+                s_led_mode = mode_item->valueint;
+                s_config.led_mode = s_led_mode;
+            }
+            save_app_config(&s_config);
+            cJSON_Delete(root);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
             return ESP_OK;
         }
 
@@ -955,10 +1254,21 @@ void app_main(void)
     if (config_err != ESP_OK) {
         ESP_LOGI(TAG, "App configuration not found in NVS. Booting into AP configure mode.");
         memset(&s_config, 0, sizeof(s_config));
+        s_config.led_on = 1;
+        s_config.led_mode = 4;
+        s_config.led_gpio = 8;
+        s_config.led_count = 1;
     } else {
         s_config_loaded = true;
         ESP_LOGI(TAG, "Config loaded -> Wi-Fi SSID: '%s', Printer IP: '%s'", s_config.wifi_ssid, s_config.bambu_ip);
     }
+
+    s_led_on = s_config.led_on;
+    s_led_mode = s_config.led_mode;
+
+    // Initialize WS2812 LED Strip
+    init_ws2812();
+    xTaskCreate(ws2812_task, "ws2812_task", 3072, NULL, 5, NULL);
 
     // Initialize LEDC PWM for fan control
     init_ledc_pwm();

@@ -760,6 +760,29 @@
       color: #e040fb;
     }
 
+    .led-mode-btn {
+      background-color: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-sub);
+      font-size: 0.72rem;
+      padding: 8px 0;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    
+    .led-mode-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .led-mode-btn.active {
+      background-color: var(--primary-glow);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
     /* Common Utils */
     .hidden {
       display: none !important;
@@ -934,6 +957,38 @@
         </div>
       </div>
 
+      <!-- WS2812 LED Controller -->
+      <div class="section-title">灯效控制</div>
+      <div class="card led-card" style="padding: 12px 20px; margin-bottom: 16px;">
+        <div class="led-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="icon-wrapper" style="background: rgba(255, 145, 0, 0.1); color: var(--accent-orange); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:currentColor;"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"/></svg>
+            </div>
+            <span style="font-size: 0.95rem; font-weight: 600;">WS2812 RGB 灯效</span>
+          </div>
+          <!-- Switch Toggle Button -->
+          <button id="led-switch-btn" class="led-switch-btn" onclick="toggleLedPower()" style="border: none; background: var(--primary); color: white; padding: 6px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease;">已开启</button>
+        </div>
+        <div class="led-modes-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+          <button class="led-mode-btn" id="led-m-0" onclick="setLedMode(0)">关闭</button>
+          <button class="led-mode-btn" id="led-m-1" onclick="setLedMode(1)">红色常亮</button>
+          <button class="led-mode-btn" id="led-m-2" onclick="setLedMode(2)">绿色常亮</button>
+          <button class="led-mode-btn" id="led-m-3" onclick="setLedMode(3)">蓝色常亮</button>
+          <button class="led-mode-btn" id="led-m-4" onclick="setLedMode(4)">自然白光</button>
+          <button class="led-mode-btn" id="led-m-5" onclick="setLedMode(5)">冷白光</button>
+          <button class="led-mode-btn" id="led-m-6" onclick="setLedMode(6)">暖黄光</button>
+          <button class="led-mode-btn" id="led-m-7" onclick="setLedMode(7)">温暖橙光</button>
+          <button class="led-mode-btn" id="led-m-8" onclick="setLedMode(8)">彩虹流动</button>
+          <button class="led-mode-btn" id="led-m-9" onclick="setLedMode(9)">冰蓝呼吸</button>
+          <button class="led-mode-btn" id="led-m-10" onclick="setLedMode(10)">极光幻境</button>
+          <button class="led-mode-btn" id="led-m-11" onclick="setLedMode(11)">流星拖尾</button>
+          <button class="led-mode-btn" id="led-m-12" onclick="setLedMode(12)">警示闪烁</button>
+          <button class="led-mode-btn" id="led-m-13" onclick="setLedMode(13)">森林绿洲</button>
+          <button class="led-mode-btn" id="led-m-14" onclick="setLedMode(14)">火焰摇曳</button>
+        </div>
+      </div>
+
       <!-- AMS LITE Spool Section -->
       <div class="card ams-card">
         <div class="ams-header">
@@ -1092,6 +1147,31 @@
         </div>
       </div>
 
+      <!-- LED Strip Configuration -->
+      <div class="settings-section">
+        <div class="settings-group-title">灯带设置</div>
+        <div class="card" style="padding: 12px 20px; margin-bottom: 16px;">
+          <!-- GPIO Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">控制引脚 (GPIO)</span>
+              <span class="setting-value" id="led-gpio-val">8</span>
+              <input type="number" id="led-gpio-input" class="setting-input hidden" placeholder="默认 8 (ESP32-C3)">
+            </div>
+            <button id="led-gpio-edit" class="edit-action-btn" onclick="toggleEdit('led-gpio')">编辑</button>
+          </div>
+          <!-- LED Count Row -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-label">灯珠数量 (LED Count)</span>
+              <span class="setting-value" id="led-count-val">1</span>
+              <input type="number" id="led-count-input" class="setting-input hidden" placeholder="默认 1">
+            </div>
+            <button id="led-count-edit" class="edit-action-btn" onclick="toggleEdit('led-count')">编辑</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Save Button -->
       <button class="save-config-btn" onclick="saveConfiguration()">保存配置并重启</button>
       <div class="settings-note">访问码和序列号用于局域网直连打印，请勿分享给他人。</div>
@@ -1115,7 +1195,9 @@
       wifi_pass: "",
       bambu_ip: "",
       bambu_pass: "",
-      bambu_serial: ""
+      bambu_serial: "",
+      led_gpio: 8,
+      led_count: 1
     };
 
     function showSettings() {
@@ -1153,7 +1235,10 @@
           else if (key === 'printer_pass') key = 'bambu_pass';
           else if (key === 'printer_sn') key = 'bambu_serial';
 
-          if (field.includes('pass')) {
+          if (key === 'led_gpio' || key === 'led_count') {
+            configData[key] = parseInt(inputEl.value) || 0;
+            valEl.innerText = configData[key];
+          } else if (field.includes('pass')) {
             valEl.innerText = '••••••••';
             configData[key] = inputEl.value;
           } else {
@@ -1389,6 +1474,30 @@
         document.getElementById('printer-status-desc').innerText = data.printer_online ? '在线' : '离线';
         document.getElementById('printer-status-desc').style.color = data.printer_online ? 'var(--primary)' : 'var(--text-sub)';
 
+        // Update LED controls UI
+        const ledOn = data.led_on;
+        const ledMode = data.led_mode;
+        const ledSwitchBtn = document.getElementById('led-switch-btn');
+        if (ledSwitchBtn) {
+          if (ledOn && ledMode !== 0) {
+            ledSwitchBtn.innerText = '已开启';
+            ledSwitchBtn.style.backgroundColor = 'var(--primary)';
+          } else {
+            ledSwitchBtn.innerText = '已关闭';
+            ledSwitchBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+          }
+        }
+        for (let m = 0; m <= 14; m++) {
+          const btn = document.getElementById(`led-m-${m}`);
+          if (btn) {
+            if (ledOn && ledMode === m) {
+              btn.classList.add('active');
+            } else {
+              btn.classList.remove('active');
+            }
+          }
+        }
+
       } catch (err) {
         console.error('Failed to update dashboard status:', err);
         document.getElementById('network-warning').classList.remove('hidden');
@@ -1446,6 +1555,47 @@
       sendControl('speed', String(nextSpeed));
     }
 
+    async function toggleLedPower() {
+      const ledSwitchBtn = document.getElementById('led-switch-btn');
+      const isCurrentlyOn = ledSwitchBtn.innerText === '已开启';
+      
+      try {
+        const response = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cmd: 'led',
+            on: !isCurrentlyOn,
+            mode: !isCurrentlyOn ? 4 : 0
+          })
+        });
+        if (response.ok) {
+          setTimeout(updateStatus, 150);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function setLedMode(mode) {
+      try {
+        const response = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cmd: 'led',
+            on: mode !== 0,
+            mode: mode
+          })
+        });
+        if (response.ok) {
+          setTimeout(updateStatus, 150);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     // Config portal functions
     async function fetchConfig() {
       try {
@@ -1456,12 +1606,16 @@
         configData.wifi_ssid = data.config_wifi_ssid || "";
         configData.bambu_ip = data.config_bambu_ip || "";
         configData.bambu_serial = data.config_bambu_serial || "";
+        configData.led_gpio = data.config_led_gpio !== undefined ? data.config_led_gpio : 8;
+        configData.led_count = data.config_led_count !== undefined ? data.config_led_count : 1;
 
         document.getElementById('wifi-ssid-val').innerText = configData.wifi_ssid || "未配置";
         document.getElementById('wifi-pass-val').innerText = data.config_wifi_pass_set ? "••••••••" : "未配置";
         document.getElementById('printer-ip-val').innerText = configData.bambu_ip || "未配置";
         document.getElementById('printer-pass-val').innerText = data.config_bambu_pass_set ? "••••••••" : "未配置";
         document.getElementById('printer-sn-val').innerText = configData.bambu_serial || "未配置";
+        document.getElementById('led-gpio-val').innerText = configData.led_gpio;
+        document.getElementById('led-count-val').innerText = configData.led_count;
         document.getElementById('wifi-status-desc').innerText = data.esp_wifi_connected ? `已连接 (${data.config_wifi_ssid})` : '未连接';
         
         const configIpStr = data.esp_ip || '0.0.0.0';
@@ -1474,7 +1628,7 @@
 
     async function saveConfiguration() {
       // If currently editing, apply changes first
-      for (const field of ['wifi-ssid', 'wifi-pass', 'printer-ip', 'printer-pass', 'printer-sn']) {
+      for (const field of ['wifi-ssid', 'wifi-pass', 'printer-ip', 'printer-pass', 'printer-sn', 'led-gpio', 'led-count']) {
         if (isEditing[field]) {
           toggleEdit(field);
         }
@@ -1486,7 +1640,9 @@
         wifi_pass: configData.wifi_pass,
         bambu_ip: configData.bambu_ip,
         bambu_pass: configData.bambu_pass,
-        bambu_serial: configData.bambu_serial
+        bambu_serial: configData.bambu_serial,
+        led_gpio: parseInt(configData.led_gpio) || 8,
+        led_count: parseInt(configData.led_count) || 1
       };
 
       try {
